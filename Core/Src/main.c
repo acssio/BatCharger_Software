@@ -41,7 +41,7 @@
 
 // For the stockage purpose
 #define STOCK_VOLTAGE 3700 // Sotckage voltage in MV
-#define TRESHOLD_LIMIT 50 // Variable used for hysteresis
+#define TRESHOLD_LIMIT 100 // Variable used for hysteresis
 
 // Used for full charge
 #define FULL_CHARGE_VOLTAGE 4100
@@ -300,6 +300,10 @@ int main(void)
 	  	if(ST_LD3 == OFF) HAL_GPIO_WritePin(UI_LD3_GPIO_Port, UI_LD3_Pin, 1);
 		else if (ST_LD3 == ON) HAL_GPIO_WritePin(UI_LD3_GPIO_Port, UI_LD3_Pin, 0);
 
+
+	 // -------------------- Error  ---------------
+	  	if(HIGH_VOTLAGE || LOW_VOLTAGE || HIGH_TEMP || LOW_TEMP) ST_LD3 = BLINK;
+	  	else ST_LD3 = OFF;
 
     /* USER CODE END WHILE */
 
