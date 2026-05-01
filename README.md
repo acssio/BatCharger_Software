@@ -13,5 +13,3 @@ There is 3 leds on the circuit board.
 - LD2 :	(STATIC) Battery Charged / Stocked
 
 - LD3 : (BLINK) Voltage Error
-		(BLINK FAST) Coherence error
-		(ON) Temperature Error

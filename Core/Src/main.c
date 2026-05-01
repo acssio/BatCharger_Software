@@ -37,13 +37,14 @@
 
 
 #define VREF 3300 // Voltage Reference in mV
+#define VREF_FACTOR 2650
 
 // For the stockage purpose
 #define STOCK_VOLTAGE 3700 // Sotckage voltage in MV
 #define TRESHOLD_LIMIT 50 // Variable used for hysteresis
 
 // Used for full charge
-#define FULL_CHARGE_VOLTAGE 4150
+#define FULL_CHARGE_VOLTAGE 4100
 
 // Used for Coherence Detection in voltage
 #define HIGH_LVL_VOLTAGE 4200
@@ -59,7 +60,12 @@
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
-#define DisSwitch HAL_GPIO_ReadPin(Full_Charge_Switch_GPIO_Port, Full_Charge_Switch_Pin)
+#define DisSwitch !HAL_GPIO_ReadPin(Full_Charge_Switch_GPIO_Port, Full_Charge_Switch_Pin)
+
+#define HIGH_VOTLAGE !HAL_GPIO_ReadPin(Comp_High_Level_GPIO_Port, Comp_High_Level_Pin)
+#define LOW_VOLTAGE !HAL_GPIO_ReadPin(Comp_Low_Level_GPIO_Port, Comp_Low_Level_Pin)
+#define HIGH_TEMP !HAL_GPIO_ReadPin(Comp_High_Temp_GPIO_Port, Comp_High_Temp_Pin)
+#define LOW_TEMP !HAL_GPIO_ReadPin(Comp_Low_Temp_GPIO_Port, Comp_Low_Temp_Pin)
 
 /* USER CODE END PM */
 
@@ -72,6 +78,7 @@ UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
 uint32_t vBat; // Battery Voltage
+convertedCH5;
 
 typedef enum {
 	IDLE,
@@ -87,6 +94,7 @@ typedef enum {
 }LED_States;
 
 LED_States ST_LD1 = OFF;
+LED_States ST_LD2 = OFF;
 LED_States ST_LD3 = OFF;
 
 
@@ -109,6 +117,7 @@ static void MX_TIM2_Init(void);
 /* USER CODE BEGIN 0 */
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 	if(ST_LD1 == BLINK) HAL_GPIO_TogglePin(UI_LD1_GPIO_Port, UI_LD1_Pin);
+	if(ST_LD2 == BLINK) HAL_GPIO_TogglePin(UI_LD2_GPIO_Port, UI_LD2_Pin);
 	if(ST_LD3 == BLINK) HAL_GPIO_TogglePin(UI_LD3_GPIO_Port, UI_LD3_Pin);
 }
 
@@ -147,6 +156,8 @@ int main(void)
   MX_ADC1_Init();
   MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
+  HAL_TIM_Base_Start_IT(&htim2);
+  ST_LD3 = OFF;
 
   /* USER CODE END 2 */
 
@@ -188,16 +199,17 @@ int main(void)
 	  	adc_value_CH6 = HAL_ADC_GetValue(&hadc1); // Read the result
 	  	HAL_ADC_Stop(&hadc1); // Stop ADC
 
-	  	uint32_t convertedCH5 = (adc_value_CH5*VREF)/4096;
-	  	uint32_t vBat = (adc_value_CH6*VREF)/4096;
+	  	convertedCH5 = (adc_value_CH5*VREF)/4096;
+	  	vBat = (adc_value_CH6*VREF)/VREF_FACTOR;
 
-		#ifdef Debug
-	  		char msg[100];
+	  	char msg[100];
 
-			sprintf(msg, "Temperature Voltage %ld\r mV \n", convertedCH5);
+		#ifdef DebugV
+
+			sprintf(msg, "Temperature Voltage %ld mV \r\n", convertedCH5);
 			HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY);
 
-			sprintf(msg, "VBAT value is %ld\r mV \n", vBat);
+			sprintf(msg, "VBAT value is %ld mV \r\n", vBat);
 			HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY);
 		#endif
 
@@ -228,10 +240,10 @@ int main(void)
 	  		switch(ChargeCtrlState){
 				case IDLE :
 					HAL_GPIO_WritePin(Enable_Charge_GPIO_Port, Enable_Charge_Pin, 0);
-					HAL_GPIO_WritePin(Enable_Discharge_GPIO_Port, Enable_Charge_Pin, 0);
-					HAL_GPIO_WritePin(UI_LD2_GPIO_Port, UI_LD2_Pin, 1);
+					HAL_GPIO_WritePin(Enable_Discharge_GPIO_Port, Enable_Discharge_Pin, 0);
 
 					ST_LD1 = OFF;
+					ST_LD2 = ON;
 
 					#ifdef Debug
 						sprintf(msg, "ChargeCtrlState : IDLE\n");
@@ -240,9 +252,9 @@ int main(void)
 
 				case DISCHARGE :
 					HAL_GPIO_WritePin(Enable_Charge_GPIO_Port, Enable_Charge_Pin, 0);
-					HAL_GPIO_WritePin(Enable_Discharge_GPIO_Port, Enable_Charge_Pin, 1);
-					HAL_GPIO_WritePin(UI_LD2_GPIO_Port, UI_LD2_Pin, 0);
+					HAL_GPIO_WritePin(Enable_Discharge_GPIO_Port, Enable_Discharge_Pin, 1);
 
+					ST_LD2 = OFF;
 					ST_LD1 = BLINK;
 
 					#ifdef Debug
@@ -252,9 +264,9 @@ int main(void)
 
 				case CHRG_ERROR:
 					HAL_GPIO_WritePin(Enable_Charge_GPIO_Port, Enable_Charge_Pin, 0);
-					HAL_GPIO_WritePin(Enable_Discharge_GPIO_Port, Enable_Charge_Pin, 0);
-					HAL_GPIO_WritePin(UI_LD2_GPIO_Port, UI_LD2_Pin, 0);
+					HAL_GPIO_WritePin(Enable_Discharge_GPIO_Port, Enable_Discharge_Pin, 0);
 
+					ST_LD2 = OFF;
 					ST_LD1 = OFF;
 
 					#ifdef Debug
@@ -264,9 +276,9 @@ int main(void)
 
 				case CHARGE:
 					HAL_GPIO_WritePin(Enable_Charge_GPIO_Port, Enable_Charge_Pin, 1);
-					HAL_GPIO_WritePin(Enable_Discharge_GPIO_Port, Enable_Charge_Pin, 0);
-					HAL_GPIO_WritePin(UI_LD2_GPIO_Port, UI_LD2_Pin, 0);
+					HAL_GPIO_WritePin(Enable_Discharge_GPIO_Port, Enable_Discharge_Pin, 0);
 
+					ST_LD2 = OFF;
 					ST_LD1 = ON;
 
 					#ifdef Debug
@@ -276,12 +288,17 @@ int main(void)
 			}
 	  	}
 
-	// -------------------- LED 1 & 3 CTRL ---------------
-	  	if(ST_LD1 == OFF) HAL_GPIO_WritePin(UI_LD1_GPIO_Port, UI_LD1_Pin, 0);
-	  	else if (ST_LD1 == ON) HAL_GPIO_WritePin(UI_LD1_GPIO_Port, UI_LD1_Pin, 1);
+	  	//HAL_GPIO_WritePin(Enable_Charge_GPIO_Port, Enable_Charge_Pin, 1);
 
-	  	if(ST_LD3 == OFF) HAL_GPIO_WritePin(UI_LD3_GPIO_Port, UI_LD3_Pin, 0);
-		else if (ST_LD3 == ON) HAL_GPIO_WritePin(UI_LD3_GPIO_Port, UI_LD3_Pin, 1);
+	// -------------------- LED 1 & 3 CTRL ---------------
+	  	if(ST_LD1 == OFF) HAL_GPIO_WritePin(UI_LD1_GPIO_Port, UI_LD1_Pin, 1);
+	  	else if (ST_LD1 == ON) HAL_GPIO_WritePin(UI_LD1_GPIO_Port, UI_LD1_Pin, 0);
+
+	  	if(ST_LD2 == OFF) HAL_GPIO_WritePin(UI_LD2_GPIO_Port, UI_LD2_Pin, 1);
+		else if (ST_LD2 == ON) HAL_GPIO_WritePin(UI_LD2_GPIO_Port, UI_LD2_Pin, 0);
+
+	  	if(ST_LD3 == OFF) HAL_GPIO_WritePin(UI_LD3_GPIO_Port, UI_LD3_Pin, 1);
+		else if (ST_LD3 == ON) HAL_GPIO_WritePin(UI_LD3_GPIO_Port, UI_LD3_Pin, 0);
 
 
     /* USER CODE END WHILE */
@@ -507,10 +524,16 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, Enable_Discharge_Pin|Enable_Charge_Pin|UI_LD3_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, Enable_Discharge_Pin|Enable_Charge_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, LD3_Pin|UI_LD1_Pin|UI_LD2_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(UI_LD3_GPIO_Port, UI_LD3_Pin, GPIO_PIN_SET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOB, UI_LD1_Pin|UI_LD2_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pins : Full_Charge_Switch_Pin Comp_High_Level_Pin Comp_Low_Temp_Pin Comp_High_Temp_Pin */
   GPIO_InitStruct.Pin = Full_Charge_Switch_Pin|Comp_High_Level_Pin|Comp_Low_Temp_Pin|Comp_High_Temp_Pin;
