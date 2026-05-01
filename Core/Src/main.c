@@ -32,17 +32,66 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 
+// Define pour le debug
+#define Debug
+
+
+#define VREF 3300 // Voltage Reference in mV
+
+// For the stockage purpose
+#define STOCK_VOLTAGE 3700 // Sotckage voltage in MV
+#define TRESHOLD_LIMIT 50 // Variable used for hysteresis
+
+// Used for full charge
+#define FULL_CHARGE_VOLTAGE 4150
+
+// Used for Coherence Detection in voltage
+#define HIGH_LVL_VOLTAGE 4200
+#define LOW_LVL_VOLTAGE 4200
+#define ADC_MARGIN 100
+
+// Used for coherence detection in temperature
+#define HIGH_LVL_TEMP 2550
+#define LOW_LVL_TEMP 999
+
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
+#define DisSwitch HAL_GPIO_ReadPin(Full_Charge_Switch_GPIO_Port, Full_Charge_Switch_Pin)
 
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+ADC_HandleTypeDef hadc1;
+
+TIM_HandleTypeDef htim2;
+
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
+uint32_t vBat; // Battery Voltage
+
+typedef enum {
+	IDLE,
+	DISCHARGE,
+	CHRG_ERROR,
+	CHARGE
+}ChargeCtrlStates;
+
+typedef enum {
+	BLINK,
+	ON,
+	OFF
+}LED_States;
+
+LED_States ST_LD1 = OFF;
+LED_States ST_LD3 = OFF;
+
+
+ChargeCtrlStates ChargeCtrlState = IDLE;
+ChargeCtrlStates PrevChargeCtrlState = DISCHARGE;
 
 /* USER CODE END PV */
 
@@ -50,12 +99,18 @@ UART_HandleTypeDef huart2;
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_USART2_UART_Init(void);
+static void MX_ADC1_Init(void);
+static void MX_TIM2_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
+	if(ST_LD1 == BLINK) HAL_GPIO_TogglePin(UI_LD1_GPIO_Port, UI_LD1_Pin);
+	if(ST_LD3 == BLINK) HAL_GPIO_TogglePin(UI_LD3_GPIO_Port, UI_LD3_Pin);
+}
 
 /* USER CODE END 0 */
 
@@ -89,6 +144,8 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_USART2_UART_Init();
+  MX_ADC1_Init();
+  MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
 
   /* USER CODE END 2 */
@@ -97,6 +154,136 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+
+	  	uint32_t adc_value_CH5;
+	  	uint32_t adc_value_CH6;
+
+	  	ADC_ChannelConfTypeDef sConfig = {0};
+	  	sConfig.Channel = ADC_CHANNEL_5; //First we will use channel 5
+	  	sConfig.Rank = ADC_REGULAR_RANK_1; // Always rank 1 for single conversions
+	  	sConfig.SamplingTime = ADC_SAMPLETIME_24CYCLES_5; // Example sampling time
+	  	sConfig.SingleDiff = ADC_SINGLE_ENDED;
+	  	sConfig.OffsetNumber = ADC_OFFSET_NONE;
+	  	sConfig.Offset = 0;
+
+	  	if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+	  	{
+	  	//Error_Handler();
+	  	}
+
+
+	  	HAL_ADC_Start(&hadc1); // Start ADC
+	  	HAL_ADC_PollForConversion(&hadc1, 100); // Wait for conversion
+	  	adc_value_CH5 = HAL_ADC_GetValue(&hadc1); // Read the result
+	  	HAL_ADC_Stop(&hadc1); // Stop ADC
+
+	  	sConfig.Channel = ADC_CHANNEL_6;	//Then we will use channel 5
+	  	if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+	  	{
+	  	//Error_Handler();
+	  	}
+
+	  	HAL_ADC_Start(&hadc1); // Start ADC
+	  	HAL_ADC_PollForConversion(&hadc1, 100); // Wait for conversion
+	  	adc_value_CH6 = HAL_ADC_GetValue(&hadc1); // Read the result
+	  	HAL_ADC_Stop(&hadc1); // Stop ADC
+
+	  	uint32_t convertedCH5 = (adc_value_CH5*VREF)/4096;
+	  	uint32_t vBat = (adc_value_CH6*VREF)/4096;
+
+		#ifdef Debug
+	  		char msg[100];
+
+			sprintf(msg, "Temperature Voltage %ld\r mV \n", convertedCH5);
+			HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY);
+
+			sprintf(msg, "VBAT value is %ld\r mV \n", vBat);
+			HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY);
+		#endif
+
+
+	  	// ------------ Charge Control ------------
+	  	switch(ChargeCtrlState){
+	  		case IDLE :
+	  			if(vBat > STOCK_VOLTAGE+TRESHOLD_LIMIT && DisSwitch) ChargeCtrlState = DISCHARGE;
+	  			else if (vBat < FULL_CHARGE_VOLTAGE-TRESHOLD_LIMIT && !DisSwitch) ChargeCtrlState = CHARGE;
+	  			else if (vBat < STOCK_VOLTAGE-TRESHOLD_LIMIT && DisSwitch) ChargeCtrlState = CHARGE;
+	  		break;
+
+	  		case DISCHARGE :
+	  			if(vBat < STOCK_VOLTAGE) ChargeCtrlState = IDLE;
+	  		break;
+
+	  		case CHRG_ERROR:
+
+			break;
+
+	  		case CHARGE:
+	  			if(vBat > FULL_CHARGE_VOLTAGE) ChargeCtrlState = IDLE;
+	  			else if (vBat > STOCK_VOLTAGE && DisSwitch) ChargeCtrlState = IDLE;
+	  		break;
+	  	}
+	  	if(ChargeCtrlState != PrevChargeCtrlState){
+	  		PrevChargeCtrlState = ChargeCtrlState;
+	  		switch(ChargeCtrlState){
+				case IDLE :
+					HAL_GPIO_WritePin(Enable_Charge_GPIO_Port, Enable_Charge_Pin, 0);
+					HAL_GPIO_WritePin(Enable_Discharge_GPIO_Port, Enable_Charge_Pin, 0);
+					HAL_GPIO_WritePin(UI_LD2_GPIO_Port, UI_LD2_Pin, 1);
+
+					ST_LD1 = OFF;
+
+					#ifdef Debug
+						sprintf(msg, "ChargeCtrlState : IDLE\n");
+					#endif
+				break;
+
+				case DISCHARGE :
+					HAL_GPIO_WritePin(Enable_Charge_GPIO_Port, Enable_Charge_Pin, 0);
+					HAL_GPIO_WritePin(Enable_Discharge_GPIO_Port, Enable_Charge_Pin, 1);
+					HAL_GPIO_WritePin(UI_LD2_GPIO_Port, UI_LD2_Pin, 0);
+
+					ST_LD1 = BLINK;
+
+					#ifdef Debug
+						sprintf(msg, "ChargeCtrlState : DISCHARGE\n");
+					#endif
+				break;
+
+				case CHRG_ERROR:
+					HAL_GPIO_WritePin(Enable_Charge_GPIO_Port, Enable_Charge_Pin, 0);
+					HAL_GPIO_WritePin(Enable_Discharge_GPIO_Port, Enable_Charge_Pin, 0);
+					HAL_GPIO_WritePin(UI_LD2_GPIO_Port, UI_LD2_Pin, 0);
+
+					ST_LD1 = OFF;
+
+					#ifdef Debug
+						sprintf(msg, "ChargeCtrlState : ERROR\n");
+					#endif
+				break;
+
+				case CHARGE:
+					HAL_GPIO_WritePin(Enable_Charge_GPIO_Port, Enable_Charge_Pin, 1);
+					HAL_GPIO_WritePin(Enable_Discharge_GPIO_Port, Enable_Charge_Pin, 0);
+					HAL_GPIO_WritePin(UI_LD2_GPIO_Port, UI_LD2_Pin, 0);
+
+					ST_LD1 = ON;
+
+					#ifdef Debug
+						sprintf(msg, "ChargeCtrlState : CHARGE\n");
+					#endif
+				break;
+			}
+	  	}
+
+	// -------------------- LED 1 & 3 CTRL ---------------
+	  	if(ST_LD1 == OFF) HAL_GPIO_WritePin(UI_LD1_GPIO_Port, UI_LD1_Pin, 0);
+	  	else if (ST_LD1 == ON) HAL_GPIO_WritePin(UI_LD1_GPIO_Port, UI_LD1_Pin, 1);
+
+	  	if(ST_LD3 == OFF) HAL_GPIO_WritePin(UI_LD3_GPIO_Port, UI_LD3_Pin, 0);
+		else if (ST_LD3 == ON) HAL_GPIO_WritePin(UI_LD3_GPIO_Port, UI_LD3_Pin, 1);
+
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -165,6 +352,109 @@ void SystemClock_Config(void)
 }
 
 /**
+  * @brief ADC1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_ADC1_Init(void)
+{
+
+  /* USER CODE BEGIN ADC1_Init 0 */
+
+  /* USER CODE END ADC1_Init 0 */
+
+  ADC_ChannelConfTypeDef sConfig = {0};
+
+  /* USER CODE BEGIN ADC1_Init 1 */
+
+  /* USER CODE END ADC1_Init 1 */
+
+  /** Common config
+  */
+  hadc1.Instance = ADC1;
+  hadc1.Init.ClockPrescaler = ADC_CLOCK_ASYNC_DIV1;
+  hadc1.Init.Resolution = ADC_RESOLUTION_12B;
+  hadc1.Init.DataAlign = ADC_DATAALIGN_RIGHT;
+  hadc1.Init.ScanConvMode = ADC_SCAN_DISABLE;
+  hadc1.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
+  hadc1.Init.LowPowerAutoWait = DISABLE;
+  hadc1.Init.ContinuousConvMode = DISABLE;
+  hadc1.Init.NbrOfConversion = 1;
+  hadc1.Init.DiscontinuousConvMode = DISABLE;
+  hadc1.Init.ExternalTrigConv = ADC_SOFTWARE_START;
+  hadc1.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
+  hadc1.Init.DMAContinuousRequests = DISABLE;
+  hadc1.Init.Overrun = ADC_OVR_DATA_PRESERVED;
+  hadc1.Init.OversamplingMode = DISABLE;
+  if (HAL_ADC_Init(&hadc1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure Regular Channel
+  */
+  sConfig.Channel = ADC_CHANNEL_5;
+  sConfig.Rank = ADC_REGULAR_RANK_1;
+  sConfig.SamplingTime = ADC_SAMPLETIME_2CYCLES_5;
+  sConfig.SingleDiff = ADC_SINGLE_ENDED;
+  sConfig.OffsetNumber = ADC_OFFSET_NONE;
+  sConfig.Offset = 0;
+  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN ADC1_Init 2 */
+
+  /* USER CODE END ADC1_Init 2 */
+
+}
+
+/**
+  * @brief TIM2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM2_Init(void)
+{
+
+  /* USER CODE BEGIN TIM2_Init 0 */
+
+  /* USER CODE END TIM2_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM2_Init 1 */
+
+  /* USER CODE END TIM2_Init 1 */
+  htim2.Instance = TIM2;
+  htim2.Init.Prescaler = 32000;
+  htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim2.Init.Period = 250;
+  htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim2, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM2_Init 2 */
+
+  /* USER CODE END TIM2_Init 2 */
+
+}
+
+/**
   * @brief USART2 Initialization Function
   * @param None
   * @retval None
@@ -217,16 +507,10 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, Enable_Discharge_Pin|Enable_Charge_Pin|UI_LD1_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, Enable_Discharge_Pin|Enable_Charge_Pin|UI_LD3_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, LD3_Pin|UI_LD1B4_Pin|UI_LD2_Pin, GPIO_PIN_RESET);
-
-  /*Configure GPIO pins : PA0 PA1 */
-  GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_1;
-  GPIO_InitStruct.Mode = GPIO_MODE_ANALOG_ADC_CONTROL;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+  HAL_GPIO_WritePin(GPIOB, LD3_Pin|UI_LD1_Pin|UI_LD2_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pins : Full_Charge_Switch_Pin Comp_High_Level_Pin Comp_Low_Temp_Pin Comp_High_Temp_Pin */
   GPIO_InitStruct.Pin = Full_Charge_Switch_Pin|Comp_High_Level_Pin|Comp_Low_Temp_Pin|Comp_High_Temp_Pin;
@@ -234,8 +518,8 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : Enable_Discharge_Pin Enable_Charge_Pin UI_LD1_Pin */
-  GPIO_InitStruct.Pin = Enable_Discharge_Pin|Enable_Charge_Pin|UI_LD1_Pin;
+  /*Configure GPIO pins : Enable_Discharge_Pin Enable_Charge_Pin */
+  GPIO_InitStruct.Pin = Enable_Discharge_Pin|Enable_Charge_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -247,9 +531,23 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(Comp_Low_Level_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : LD3_Pin UI_LD1B4_Pin UI_LD2_Pin */
-  GPIO_InitStruct.Pin = LD3_Pin|UI_LD1B4_Pin|UI_LD2_Pin;
+  /*Configure GPIO pin : UI_LD3_Pin */
+  GPIO_InitStruct.Pin = UI_LD3_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(UI_LD3_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : LD3_Pin */
+  GPIO_InitStruct.Pin = LD3_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(LD3_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : UI_LD1_Pin UI_LD2_Pin */
+  GPIO_InitStruct.Pin = UI_LD1_Pin|UI_LD2_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
