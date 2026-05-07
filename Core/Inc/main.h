@@ -73,8 +73,8 @@ void Error_Handler(void);
 #define Comp_Low_Level_GPIO_Port GPIOB
 #define Enable_Charge_Pin GPIO_PIN_8
 #define Enable_Charge_GPIO_Port GPIOA
-#define UI_LD3_Pin GPIO_PIN_11
-#define UI_LD3_GPIO_Port GPIOA
+#define UI_LD1_Pin GPIO_PIN_11
+#define UI_LD1_GPIO_Port GPIOA
 #define SWDIO_Pin GPIO_PIN_13
 #define SWDIO_GPIO_Port GPIOA
 #define SWCLK_Pin GPIO_PIN_14
@@ -83,10 +83,10 @@ void Error_Handler(void);
 #define VCP_RX_GPIO_Port GPIOA
 #define LD3_Pin GPIO_PIN_3
 #define LD3_GPIO_Port GPIOB
-#define UI_LD1_Pin GPIO_PIN_4
-#define UI_LD1_GPIO_Port GPIOB
-#define UI_LD2_Pin GPIO_PIN_5
+#define UI_LD2_Pin GPIO_PIN_4
 #define UI_LD2_GPIO_Port GPIOB
+#define UI_LD3_Pin GPIO_PIN_5
+#define UI_LD3_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
 

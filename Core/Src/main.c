@@ -40,7 +40,7 @@
 #define VREF_FACTOR 2650
 
 // For the stockage purpose
-#define STOCK_VOLTAGE 3700 // Sotckage voltage in MV
+#define STOCK_VOLTAGE 3600 // Sotckage voltage in MV
 #define TRESHOLD_LIMIT 100 // Variable used for hysteresis
 
 // Used for full charge
@@ -531,13 +531,13 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(GPIOA, Enable_Discharge_Pin|Enable_Charge_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(UI_LD3_GPIO_Port, UI_LD3_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(UI_LD1_GPIO_Port, UI_LD1_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, UI_LD1_Pin|UI_LD2_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(GPIOB, UI_LD2_Pin|UI_LD3_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pins : Full_Charge_Switch_Pin Comp_High_Level_Pin Comp_Low_Temp_Pin Comp_High_Temp_Pin */
   GPIO_InitStruct.Pin = Full_Charge_Switch_Pin|Comp_High_Level_Pin|Comp_Low_Temp_Pin|Comp_High_Temp_Pin;
@@ -558,12 +558,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(Comp_Low_Level_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : UI_LD3_Pin */
-  GPIO_InitStruct.Pin = UI_LD3_Pin;
+  /*Configure GPIO pin : UI_LD1_Pin */
+  GPIO_InitStruct.Pin = UI_LD1_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(UI_LD3_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(UI_LD1_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : LD3_Pin */
   GPIO_InitStruct.Pin = LD3_Pin;
@@ -572,8 +572,8 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(LD3_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : UI_LD1_Pin UI_LD2_Pin */
-  GPIO_InitStruct.Pin = UI_LD1_Pin|UI_LD2_Pin;
+  /*Configure GPIO pins : UI_LD2_Pin UI_LD3_Pin */
+  GPIO_InitStruct.Pin = UI_LD2_Pin|UI_LD3_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
